@@ -47,16 +47,17 @@ type evtReaction struct {
 }
 
 type evtMessage struct {
-	ID   string `json:"id"`
-	Text string `json:"text"`
+	ID        string `json:"id"`
+	Text      string `json:"text"`
+	RepliedId string `json:"replied_id"`
 }
 
 func SanitizePhone(phone *string) {
 	if phone != nil && len(*phone) > 0 && !strings.Contains(*phone, "@") {
 		if len(*phone) <= 15 {
-			*phone = fmt.Sprintf("%s@s.whatsapp.net", *phone)
+			*phone = fmt.Sprintf("%s%s", *phone, config.WhatsappTypeUser)
 		} else {
-			*phone = fmt.Sprintf("%s@g.us", *phone)
+			*phone = fmt.Sprintf("%s%s", *phone, config.WhatsappTypeGroup)
 		}
 	}
 }
@@ -115,8 +116,31 @@ func ParseJID(arg string) (types.JID, error) {
 	}
 }
 
+func IsOnWhatsapp(waCli *whatsmeow.Client, jid string) bool {
+	// only check if the jid a user with @s.whatsapp.net
+	if strings.Contains(jid, "@s.whatsapp.net") {
+		data, err := waCli.IsOnWhatsApp([]string{jid})
+		if err != nil {
+			panic(pkgError.InvalidJID(err.Error()))
+		}
+
+		for _, v := range data {
+			if !v.IsIn {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
 func ValidateJidWithLogin(waCli *whatsmeow.Client, jid string) (types.JID, error) {
 	MustLogin(waCli)
+
+	if !IsOnWhatsapp(waCli, jid) {
+		return types.JID{}, pkgError.InvalidJID(fmt.Sprintf("Phone %s is not on whatsapp", jid))
+	}
+
 	return ParseJID(jid)
 }
 
@@ -156,9 +180,9 @@ func MustLogin(waCli *whatsmeow.Client) {
 		panic(pkgError.InternalServerError("Whatsapp client is not initialized"))
 	}
 	if !waCli.IsConnected() {
-		panic(pkgError.AuthError("you are not connect to services server, please reconnect"))
+		panic(pkgError.ErrNotConnected)
 	} else if !waCli.IsLoggedIn() {
-		panic(pkgError.AuthError("you are not login to services server, please login"))
+		panic(pkgError.ErrNotLoggedIn)
 	}
 }
 
@@ -209,9 +233,6 @@ func handler(rawEvt interface{}) {
 		if evt.IsViewOnce {
 			metaParts = append(metaParts, "view once")
 		}
-		if evt.IsViewOnce {
-			metaParts = append(metaParts, "ephemeral")
-		}
 
 		log.Infof("Received message %s from %s (%s): %+v", evt.Info.ID, evt.Info.SourceString(), strings.Join(metaParts, ", "), evt.Message)
 
@@ -239,9 +260,9 @@ func handler(rawEvt interface{}) {
 			}
 		}
 	case *events.Receipt:
-		if evt.Type == events.ReceiptTypeRead || evt.Type == events.ReceiptTypeReadSelf {
+		if evt.Type == types.ReceiptTypeRead || evt.Type == types.ReceiptTypeReadSelf {
 			log.Infof("%v was read by %s at %s", evt.MessageIDs, evt.SourceString(), evt.Timestamp)
-		} else if evt.Type == events.ReceiptTypeDelivered {
+		} else if evt.Type == types.ReceiptTypeDelivered {
 			log.Infof("%s was delivered to %s at %s", evt.MessageIDs[0], evt.SourceString(), evt.Timestamp)
 		}
 	case *events.Presence:
@@ -291,9 +312,9 @@ func forwardToWebhook(evt *events.Message) error {
 	message.ID = evt.Info.ID
 	if extendedMessage := evt.Message.ExtendedTextMessage.GetText(); extendedMessage != "" {
 		message.Text = extendedMessage
+		message.RepliedId = evt.Message.ExtendedTextMessage.ContextInfo.GetStanzaId()
 	}
 
-	
 	var quotedmessage any
 	if evt.Message.ExtendedTextMessage != nil && evt.Message.ExtendedTextMessage.ContextInfo != nil {
 		if conversation := evt.Message.ExtendedTextMessage.ContextInfo.QuotedMessage.GetConversation(); conversation != "" {
@@ -301,17 +322,15 @@ func forwardToWebhook(evt *events.Message) error {
 		}
 	}
 
-	var forwarded any
+	var forwarded bool
 	if evt.Message.ExtendedTextMessage != nil && evt.Message.ExtendedTextMessage.ContextInfo != nil {
-		if isForwarded := evt.Message.ExtendedTextMessage.ContextInfo.GetIsForwarded(); !isForwarded {
-			forwarded = nil
-		}
+		forwarded = evt.Message.ExtendedTextMessage.ContextInfo.GetIsForwarded()
 	}
 
-	var waReaction *evtReaction
-	if evt.Message.ReactionMessage != nil {
-		waReaction.Message = evt.Message.ReactionMessage.GetText()
-		waReaction.ID = evt.Message.ReactionMessage.GetKey().GetId()
+	var waReaction evtReaction
+	if reactionMessage := evt.Message.ReactionMessage; reactionMessage != nil {
+		waReaction.Message = reactionMessage.GetText()
+		waReaction.ID = reactionMessage.GetKey().GetId()
 	}
 
 	body := map[string]interface{}{

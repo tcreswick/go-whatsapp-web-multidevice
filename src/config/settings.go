@@ -1,15 +1,14 @@
 package config
 
 import (
-	"fmt"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 )
 
 var (
-	AppVersion             = "v4.9.0"
+	AppVersion             = "v4.13.0"
 	AppPort                = "3000"
 	AppDebug               = false
-	AppOs                  = fmt.Sprintf("AldinoKemal")
+	AppOs                  = "AldinoKemal"
 	AppPlatform            = waProto.DeviceProps_PlatformType(1)
 	AppBasicAuthCredential string
 
@@ -20,9 +19,11 @@ var (
 
 	DBName = "whatsapp.db"
 
-	WhatsappLogLevel            = "ERROR"
 	WhatsappAutoReplyMessage    string
 	WhatsappWebhook             string
+	WhatsappLogLevel                  = "ERROR"
 	WhatsappSettingMaxFileSize  int64 = 50000000  // 50MB
 	WhatsappSettingMaxVideoSize int64 = 100000000 // 100MB
+	WhatsappTypeUser                  = "@s.whatsapp.net"
+	WhatsappTypeGroup                 = "@g.us"
 )
