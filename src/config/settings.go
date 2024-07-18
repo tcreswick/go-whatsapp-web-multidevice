@@ -1,15 +1,15 @@
 package config
 
 import (
-	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 )
 
 var (
-	AppVersion             = "v4.13.0"
+	AppVersion             = "v4.15.0"
 	AppPort                = "3000"
 	AppDebug               = false
 	AppOs                  = "AldinoKemal"
-	AppPlatform            = waProto.DeviceProps_PlatformType(1)
+	AppPlatform            = waCompanionReg.DeviceProps_PlatformType(1)
 	AppBasicAuthCredential string
 
 	PathQrCode    = "statics/qrcode"
